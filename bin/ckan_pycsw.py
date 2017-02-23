@@ -25,6 +25,7 @@ def setup_db(pycsw_config):
     ckan_columns = [
         Column('ckan_id', Text, index=True),
         Column('ckan_modified', Text),
+        Column('ckan_organization', Text)
     ]
 
     pycsw.admin.setup_db(database,
@@ -63,7 +64,7 @@ def load(pycsw_config, ckan_url):
 
     log.info('Started gathering CKAN datasets identifiers: {0}'.format(str(datetime.datetime.now())))
 
-    query = 'api/search/dataset?qjson={"fl":"id,metadata_modified,extras_harvest_object_id,extras_metadata_source", "q":"harvest_object_id:[\\"\\" TO *]", "limit":1000, "start":%s}'
+    query = 'api/search/dataset?qjson={"fl":"id,metadata_modified,extras_harvest_object_id,extras_metadata_source,organization", "q":"harvest_object_id:[\\"\\" TO *]", "limit":1000, "start":%s}'
 
     start = 0
 
@@ -83,6 +84,7 @@ def load(pycsw_config, ckan_url):
             gathered_records[result['id']] = {
                 'metadata_modified': result['metadata_modified'],
                 'harvest_object_id': result['extras']['harvest_object_id'],
+                'ckan_organization': result['organization'],
                 'source': result['extras'].get('metadata_source')
             }
 
@@ -188,6 +190,7 @@ def get_record(context, repo, ckan_url, ckan_id, ckan_info):
         record.identifier = ckan_id
     record.ckan_id = ckan_id
     record.ckan_modified = ckan_info['metadata_modified']
+    record.ckan_organization = ckan_info['organization']
 
     return record
 
