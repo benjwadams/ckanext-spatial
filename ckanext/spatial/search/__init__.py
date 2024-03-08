@@ -182,18 +182,53 @@ class SolrSpatialFieldSearchBackend(SpatialSearchBackend):
             if not shape.is_valid:
                 log.error("Wrong geometry, not indexing")
                 return dataset_dict
-            if shape.bounds[0] < -180 or shape.bounds[2] > 180:
-                log.error(
-                    """
-Geometries outside the -180, -90, 180, 90 boundaries are not supported,
-you need to split the geometry in order to fit the parts. Not indexing"""
-                )
+            try:
+                shape_cropped = split_geometry_antimeridian(shape)
+            except:
+                log.exception("Could not split geometry along antimeridian")
                 return dataset_dict
-            wkt = shape.wkt
+            wkt = shape_cropped.wkt
 
         dataset_dict["spatial_geom"] = wkt
 
         return dataset_dict
+
+    def split_geometry_antimeridian(self, geometry: shapely.Geometry) -> shapely.Geometry:
+        """
+        Attempt to split on the antimeridian, and +/- 90 degree latitude bounds,
+        correcting and translating back to +/- 180 degree longitude bounds if
+        necessary
+
+        """
+
+        spatial_joins = []
+
+        def intersect_and_translate(geometry: shapely.Geometry,
+                                    bbox: shapely.box,
+                                    longitude_translate: int) -> shapely.Geometry:
+
+            geom_clipped = geometry.intersection(bbox)
+            return shapely.affinity.translate(geom_clipped, longitude_translate)
+
+        if geometry.bounds[0] < -180:
+            spatial_joins.append(intersect_and_translate(geometry,
+                                                        shapely.box(-360, -90,
+                                                                    -180, 90),
+                                                        180))
+        if geometry.bounds[2] > 180:
+            spatial_joins.append(intersect_and_translate(geometry,
+                                                        shapely.box(180, -90,
+                                                                    360, 90),
+                                                        -180))
+        if (not spatial_joins or not (geometry.bounds[1] < -90 or
+                                      geometry.bounds[3] > 90)):
+            return geometry
+        else:
+            spatial_joins.append(intersect_and_translate(geometry,
+                                                         shapely.box(-180, -90,
+                                                                     180, 90),
+                                                        0))
+            return shapely.unary_union(spatial_joins)
 
     def search_params(self, bbox, search_params):
 
